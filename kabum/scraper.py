@@ -6,7 +6,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 import csv
 import os
 import time
-
+import threading
+import itertools
+import sys
 
 class Kabum:
     def __init__(self, search, limit=None):
@@ -76,11 +78,26 @@ class Kabum:
         self.driver.quit()
         self.save()
 
+def spinner():
+    for c in itertools.cycle(['|', '/', '-', '\\']):
+        if done:
+            break
+        sys.stdout.write(f'\rLoading... {c}')
+        sys.stdout.flush()
+        time.sleep(0.1)
+
 
 if __name__ == "__main__":
     search_term = input("Search for: ")
 
+    done = False
+    t = threading.Thread(target=spinner)
+    t.start()
+
     scraper = Kabum(search=search_term, limit=None)
     scraper.run()
 
-    print('Scraping complete!')
+    done = True
+    t.join()
+
+    sys.stdout.write('\rScraping complete!           \n')
