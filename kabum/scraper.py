@@ -1,81 +1,86 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-
 from webdriver_manager.chrome import ChromeDriverManager
 
 import csv
 import os
 import time
 
-BASE_URL = 'https://www.kabum.com.br/busca/'
-LIMIT_DATA_ROWS = None
 
-search = input('Search for: ')
+class Kabum:
+    def __init__(self, search, limit=None):
+        self.BASE_URL = 'https://www.kabum.com.br/busca/'
+        self.LIMIT_DATA_ROWS = limit
+        self.search = search
+        self.url = self.BASE_URL + search
+        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+        self.data = {
+            'title': [], 
+            'price': [],
+            'image': [],
+            'url': [],
+        }
+        self.rows = 0
 
-url = BASE_URL + search
+    def scraper(self):
+        products = self.driver.find_elements(By.CLASS_NAME, 'productCard')
+        for p in products:
+            title = p.find_element(By.CLASS_NAME, 'nameCard').text
+            price = p.find_element(By.CLASS_NAME, 'priceCard').text
+            image = p.find_element(By.TAG_NAME, 'img').get_attribute('src')
+            product_url = p.find_element(By.CLASS_NAME, 'productLink').get_attribute('href')
 
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-driver.get(url)
-time.sleep(2)
+            self.data['title'].append(title)
+            self.data['price'].append(price)
+            self.data['image'].append(image)
+            self.data['url'].append(product_url)
 
-url_atual = driver.current_url
+            self.rows += 1
 
-data = {
-    'title': [], 
-    'price': [],
-    'image': [],
-    'url': [],
-}
+            if self.LIMIT_DATA_ROWS and self.rows >= self.LIMIT_DATA_ROWS:
+                break
 
-rows = 0
+    def save(self):
+        if not os.path.exists('kabum/data'):
+            os.makedirs('kabum/data')
 
-def scraper():
-    global rows
-    products = driver.find_elements(By.CLASS_NAME, 'productCard')
-    for p in products:
-        title = p.find_element(By.CLASS_NAME, 'nameCard').text
-        price = p.find_element(By.CLASS_NAME, 'priceCard').text
-        image = p.find_element(By.TAG_NAME, 'img').get_attribute('src')
-        product_url = p.find_element(By.CLASS_NAME, 'productLink').get_attribute('href')
+        with open(f'kabum/data/{self.search}.csv', mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['Title', 'Price', 'Image URL', 'Product URL'])
 
-        data['title'].append(title)
-        data['price'].append(price)
-        data['image'].append(image)
-        data['url'].append(product_url)
+            for i in range(len(self.data['title'])):
+                writer.writerow([self.data['title'][i], self.data['price'][i], self.data['image'][i], self.data['url'][i]])
 
-        rows += 1
+    def run(self):
+        self.driver.get(self.url)
+        time.sleep(2)
 
-        if LIMIT_DATA_ROWS and rows >= LIMIT_DATA_ROWS:
-            break
+        url_atual = self.driver.current_url
+        pagination = self.driver.find_elements(By.CLASS_NAME, 'pagination')
 
-def save(name, data):
-    if not os.path.exists('kabum/data'):
-        os.makedirs('kabum/data')
+        if pagination:
+            pages = pagination[0].find_elements(By.TAG_NAME, 'a')
+            total_pages = int(pages[-2].text)
+        else:
+            total_pages = 1
 
-    with open(f'kabum/data/{name}.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Title', 'Price', 'Image URL', 'Product URL'])
+        for page in range(1, total_pages + 1):
+            if self.LIMIT_DATA_ROWS and self.rows >= self.LIMIT_DATA_ROWS:
+                break
 
-        for i in range(len(data['title'])):
-            writer.writerow([data['title'][i], data['price'][i], data['image'][i], data['url'][i]])
+            self.driver.get(url_atual + f'?page_number={page}')
+            time.sleep(2)
+            self.scraper()
 
-pagination = driver.find_elements(By.CLASS_NAME, 'pagination')
+        self.driver.quit()
+        self.save()
 
-if pagination:
-    pages = pagination[0].find_elements(By.TAG_NAME, 'a')
-    total_pages = int(pages[-2].text)
-else:
-    total_pages = 1
 
-for page in range(1, total_pages + 1):
-    if LIMIT_DATA_ROWS and rows >= LIMIT_DATA_ROWS:
-        break
+if __name__ == "__main__":
+    search_term = input("Search for: ")
 
-    driver.get(url_atual + f'?page_number={page}')
-    time.sleep(2)
-    scraper()
+    scraper = Kabum(search=search_term, limit=None)
+    scraper.run()
 
-driver.quit()
-
-save(name=search, data=data)
+    print('Scraping complete!')
